@@ -1,0 +1,246 @@
+---
+title: "Sentiment Analysis: Wendy's vs. McDonald's"
+author: "Levi Sayles"
+date: "`r Sys.Date()`"
+output: html_document
+toc: true                 # Generates an automatic table of contents.
+format:                   # Options related to formatting.
+  html:                   # Options related to HTML output.
+    code-tools: False      # Allow the code tools option showing in the output.
+    embed-resources: TRUE # Embeds all components into a single HTML file. 
+execute:                  # Options related to the execution of code chunks.
+  warning: FALSE          # FALSE: Code chunk sarnings are hidden by default.
+  message: FALSE          # FALSE: Code chunk messages are hidden by default.
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidytext)
+library(dplyr)
+library(ggplot2)
+library(readr)
+library(lubridate)
+```
+
+## Introduction
+
+In today’s competitive fast-food industry, understanding public sentiment is crucial for driving customer engagement and improving brand reputation. This report investigates the sentiment and emotions expressed in online discussions about two iconic fast-food chains: **Wendy's** and **McDonald's**. By leveraging sentiment analysis techniques and the NRC lexicon, we aim to uncover valuable insights into how these brands are perceived by their audiences.
+
+### **Key Questions:**
+
+1.  **Sentiment Comparison**: How do positive and negative sentiments differ between Wendy's and McDonald's?
+
+2.  **Emotional Landscape**: What are the dominant emotions associated with each brand, and how do they vary?
+
+3.  **Sentiment Trends**: How has sentiment for each brand evolved over time, and what factors might have influenced these trends?
+
+The findings of this analysis will provide actionable insights to help these brands better understand their customers and optimize their marketing and public relations strategies.
+
+## Data Collection
+
+For this analysis, data was collected using **Google News RSS feeds**, capturing articles that specifically mention **"Wendy's"** and **"McDonald's"**. These articles provide unstructured textual data reflecting public discussions and opinions about each brand.
+
+### **Processing Steps:**
+
+1.  Articles were retrieved and stored in CSV files for analysis.
+
+2.  The text data from titles and descriptions of the articles were combined to form a comprehensive text column for each brand.
+
+3.  Sentiment and emotional context were analyzed using the **NRC lexicon** to categorize words into predefined sentiment and emotion classes.
+
+This approach ensures that the analysis captures diverse and meaningful public discourse, offering an accurate view of brand perception over time.
+
+```{r load-data}
+#| include: FALSE 
+# Load the datasets
+wendys_news <- read_csv("https://myxavier-my.sharepoint.com/:x:/g/personal/saylesl_xavier_edu/EUoBrIj5OFpLsJBDpqXZrNwBcaMa0dJ9ecxlLNJhWi42Hg?download=1")
+mcdonalds_news <- read_csv("https://myxavier-my.sharepoint.com/:x:/g/personal/saylesl_xavier_edu/EX4Xh8ewjE1JojZa464-BVIBS2zwX4DIt_juwczJX_IUOQ?download=1")
+
+# Combine title and description into a single text column
+wendys_news <- wendys_news %>%
+  mutate(text = paste(title, description, sep = " "))
+
+mcdonalds_news <- mcdonalds_news %>%
+  mutate(text = paste(title, description, sep = " "))
+```
+
+## Question 1: Positive vs. Negative Sentiments
+
+**Question:** Are discussions about Wendy's generally more positive or negative compared to McDonald's?
+
+**Rationale:** This helps gauge overall public perception of each brand.
+
+```{r sentiment-analysis}
+#| echo: false
+# Load NRC lexicon
+nrc <- get_sentiments("nrc")
+
+# Tokenize and join NRC lexicon
+wendys_sentiment <- wendys_news %>%
+  unnest_tokens(word, text) %>%
+  inner_join(nrc, by = "word", relationship = "many-to-many") %>%
+  filter(sentiment %in% c("positive", "negative")) %>%
+  count(sentiment, sort = TRUE)
+
+mcdonalds_sentiment <- mcdonalds_news %>%
+  unnest_tokens(word, text) %>%
+  inner_join(nrc, by = "word", relationship = "many-to-many") %>%
+  filter(sentiment %in% c("positive", "negative")) %>%
+  count(sentiment, sort = TRUE)
+
+# Combine data for visualization
+combined_sentiments <- rbind(
+  data.frame(brand = "Wendy's", wendys_sentiment),
+  data.frame(brand = "McDonald's", mcdonalds_sentiment)
+)
+
+# Visualize positive vs. negative sentiments
+ggplot(combined_sentiments, aes(x = sentiment, y = n, fill = brand)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(title = "Positive vs Negative Sentiments",
+       x = "Sentiment", y = "Count") +
+  theme_minimal()
+```
+
+### Key Observations:
+
+-   Wendy's has a higher proportion of positive sentiments compared to McDonald's.
+
+-   Wendy's exhibits a slightly higher share of negative sentiments, highlighting areas for improvement.
+
+### Implications:
+
+-   Wendy's strong positive sentiment indicates a favorable public perception.
+
+-   Wendy's should focus on reducing negative sentiment through improved customer engagement and public relations strategies.
+
+## Question 2: Dominant Emotions
+
+**Question:** What emotions dominate for Wendy's and McDonald's?
+
+**Rationale:** Understanding emotional responses helps identify strengths and weaknesses in public perception.
+
+```{r emotion-analysis}
+#| echo: false 
+# Count emotions
+wendys_emotions <- wendys_news %>%
+  unnest_tokens(word, text) %>%
+  inner_join(nrc, by = "word", relationship = "many-to-many") %>%
+  count(sentiment, sort = TRUE)
+
+mcdonalds_emotions <- mcdonalds_news %>%
+  unnest_tokens(word, text) %>%
+  inner_join(nrc, by = "word", relationship = "many-to-many") %>%
+  count(sentiment, sort = TRUE)
+
+# Combine data for visualization
+combined_emotions <- rbind(
+  data.frame(brand = "Wendy's", wendys_emotions),
+  data.frame(brand = "McDonald's", mcdonalds_emotions)
+)
+
+# Visualize emotions
+ggplot(combined_emotions, aes(x = sentiment, y = n, fill = brand)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(title = "Dominant Emotions: Wendy's vs McDonald's",
+       x = "Emotion", y = "Count") +
+  theme_minimal()
+```
+
+### Key Observations:
+
+**Positive Emotions:**
+
+-   Wendy's has higher counts for "trust" than McDonald's, reflecting stronger public approval.
+
+-   McDonald's shows significant "anticipation," suggesting customer excitement.
+
+**Negative Emotions:**
+
+-   Wendy's leads in "negative," "fear," and "sadness," indicating areas of concern or dissatisfaction.
+
+-   McDonald's has lower counts for "disgust" compared to Wendy's.
+
+**Implications:**
+
+-   Wendy's can capitalize on its strong "trust" and "positive"sentiments.
+
+-   Wendy's should investigate and address the root causes of "fear" and "sadness" to improve customer sentiment.
+
+## Question 3: Sentiment Trends Over Time
+
+**Question:** How has sentiment for Wendy's and McDonald's evolved over time?
+
+**Rationale:** Tracking sentiment over time reveals trends and potential reactions to events.
+
+```{r sentiment-trends}
+#| echo: false
+# Preprocess pubDate to remove the time zone
+wendys_news <- wendys_news %>%
+  mutate(pubDate = gsub(" GMT", "", pubDate))
+
+mcdonalds_news <- mcdonalds_news %>%
+  mutate(pubDate = gsub(" GMT", "", pubDate))
+
+# Convert pubDate to Date type for Wendy's
+wendys_news <- wendys_news %>%
+  mutate(pubDate = as.Date(pubDate, format = "%a, %d %b %Y %H:%M:%S"))
+
+# Convert pubDate to Date type for McDonald's
+mcdonalds_news <- mcdonalds_news %>%
+  mutate(pubDate = as.Date(pubDate, format = "%a, %d %b %Y %H:%M:%S"))
+
+# Tokenize and group by date
+wendys_trends <- wendys_news %>%
+  unnest_tokens(word, text) %>%
+  inner_join(nrc, by = "word", relationship = "many-to-many") %>%
+  filter(sentiment %in% c("positive", "negative")) %>%
+  count(pubDate, sentiment)
+
+mcdonalds_trends <- mcdonalds_news %>%
+  unnest_tokens(word, text) %>%
+  inner_join(nrc, by = "word", relationship = "many-to-many") %>%
+  filter(sentiment %in% c("positive", "negative")) %>%
+  count(pubDate, sentiment)
+
+# Combine trends data
+combined_trends <- rbind(
+  data.frame(brand = "Wendy's", wendys_trends),
+  data.frame(brand = "McDonald's", mcdonalds_trends)
+)
+
+# Visualize sentiment trends
+ggplot(combined_trends, aes(x = pubDate, y = n, color = sentiment, linetype = brand)) +
+  geom_line() +
+  labs(title = "Sentiment Trends Over Time",
+       x = "Date", y = "Sentiment Count") +
+  theme_minimal()
+```
+
+### Key Observations:
+
+-   Sentiment activity spikes around mid-November, indicating an event or campaign that drove discussions.
+
+-   Wendy's shows stronger positive sentiment spikes compared to McDonald's.
+
+-   Sentiment activity decreases toward the end of November, signaling reduced public discourse.
+
+**Implications:**
+
+-   Mid-November events for both brands significantly influenced public sentiment.
+
+-   Wendy's may leverage its stronger positive sentiments in marketing campaigns.
+
+## Conclusion
+
+This analysis reveals significant differences in public sentiment and emotions between Wendy's and McDonald's:
+
+-   Wendy's has stronger positive sentiments and higher trust and positive levels, giving it an advantage in public perception.
+
+-   Wendy's also exhibits higher negative sentiments and emotions like fear and sadness, highlighting potential areas of improvement.
+
+-   McDonald's exhibits higher anticipation, joy, and surprise, indicating that people are more excited overall about the changes brought to McDonald's than they are about Wendy's.
+
+-   Both brands saw a significant spike in sentiment activity around mid-November, likely tied to specific events or campaigns.
+
+These findings can guide marketing strategies and public relations efforts for both brands.
