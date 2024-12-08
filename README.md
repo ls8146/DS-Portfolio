@@ -1,5 +1,5 @@
 # Data-Science-Portfolio
-This Repository contains all of my past and current Data Science Projects at Xavier University.
+This Repository contains all of my past and current Data Science Projects at Xavier University. This Repository will contiue to grow and change over time!
 
 ## Projects and Experiences
 
