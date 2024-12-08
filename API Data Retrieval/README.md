@@ -2,4 +2,4 @@ In this Project, I was tasked with using an API to gather information that could
 
 API key was removed from the code.
 
-https://rpubs.com/saylesl/OMDb
+QMD Output: https://rpubs.com/saylesl/OMDb
