@@ -1,0 +1,183 @@
+---
+# This is a YAML
+# YAML is a human-friendly data serialization language
+# We use it to define the criteria of the Quarto Document.
+title: "The Open Movie Database API"    # Name of your HTML output
+subtitle: "Data from APIs"
+author: "Levi Sayles"                   # Author name
+toc: true                 # Generates an automatic table of contents.
+format:                   # Options related to formatting.
+  html:                   # Options related to HTML output.
+    code-tools: False      # Allow the code tools option showing in the output.
+    embed-resources: TRUE # Embeds all components into a single HTML file. 
+execute:                  # Options related to the execution of code chunks.
+  warning: FALSE          # FALSE: Code chunk sarnings are hidden by default.
+  message: FALSE          # FALSE: Code chunk messages are hidden by default.
+
+# There are many other YAML functions available. 
+# You can view execution options for code chunks here:
+# https://quarto.org/docs/computations/execution-options.html
+
+# View more formatting options here:
+# https://quarto.org/docs/reference/formats/html.html  
+---
+
+```{r}
+#| label: Setup
+#| include: FALSE 
+
+# Near the top of your .QMD file you should have a "Setup" chunk like this one.
+# This chunk is used to setup the Quarto environment including libraries.
+# Make sure to give a brief explanation of what the library will be used for.
+library(tidyverse) # All the tidy things
+library(jsonlite)  # Converting json data into data frames
+library(magrittr)  # Extracting items from list objects using piping grammar
+library(httr) 
+
+
+```
+
+## Overview
+
+This API allows us to retrieve detailed information about movies and TV shows by querying the OMDb database. This data includes titles, genres, release dates, and more, making it useful for film enthusiasts, researchers, and developers looking to integrate media information into their projects.
+
+Someone might find this information interesting because it provides easy access to movie and TV show data, which can be utilized for building media apps, creating recommendations, or conducting research on popular titles.
+
+All of the necessary links and information can be found at: https://www.omdbapi.com, which provides various API functionalities related to the Open Movie Database.
+
+The key fields to understand for this API are:
+
+"Title" - which gives the name of the movie or show.
+
+"Year" - which indicates when the movie or show was released.
+
+"Director" - indicates the director of the movie.
+
+Using this, we can fetch and analyze detailed media data efficiently
+
+## Setup
+
+The OMDb API requires an API key for usage. Here's how you can obtain one:
+
+1.  Go to the OMDb API website.
+
+2.  Register for a free or paid API key depending on your needs. The free key provides up to 1,000 requests per day.
+
+3.  Once registered, you will receive an API key via email. You will use this key to authenticate your API requests.
+
+## Format:
+
+Here’s how we can adapt the tutorial for the OMDb API to retrieve and display movie data.
+
+First, we need to load all the necessary packages.
+
+The OMDb API is free to use with just a simple API key, allowing us to directly extract data about movies and TV shows from the OMDb database using a JSON file. Make sure to replace `"your_api_key"` with your actual API key when using the service.
+
+Endpoint Format:
+
+<http://www.omdbapi.com/?apikey=%5Byourkey%5D&>
+
+Here’s the code to get started:
+
+```{r}
+#| label: Intro to Quarto 
+#| echo: true
+
+# Set the endpoint and API key
+omdb_api_key <- "your_api_key"
+movie_title <- "insert_movie_title"
+omdb_endpoint <- paste0("http://www.omdbapi.com/?t=", movie_title, "&apikey=", omdb_api_key)
+
+# Get the information and format it
+omdb_data <- 
+  GET(omdb_endpoint) %>% 
+  content(as = "text", encoding = "UTF-8") %>% 
+  fromJSON()
+```
+
+```{r}
+#| label: api key
+#| include: FALSE
+#| echo: false
+omdb_api_key <- "" #API Key removed
+
+
+```
+
+## Tutorial:
+
+```{r}
+#| label: initial data wrangling
+#| include: true
+#| echo: true
+#| output: false
+
+
+movie_title <- "Inception"
+omdb_endpoint <- paste0("http://www.omdbapi.com/?t=", movie_title, "&apikey=", omdb_api_key)
+
+# Get the information and format it
+omdb_data <- 
+  GET(omdb_endpoint) %>% 
+  content(as = "text", encoding = "UTF-8") %>% 
+  fromJSON()
+
+# Generate status messages for key movie details
+print(paste("Title:", omdb_data$Title))
+print(paste("Year:", omdb_data$Year))
+print(paste("Director:", omdb_data$Director))
+
+```
+
+```{r}
+#| label: initial data wrangling2
+#| echo: false
+#| include: true
+print(paste("Title:", omdb_data$Title))
+print(paste("Year:", omdb_data$Year))
+print(paste("Director:", omdb_data$Director))
+```
+
+This will return some basic details about the movie like the title, year, and director, for the movie "Inception." You can change the `movie_title` variable to search for any other movie or show.
+
+Now, to get continuously updated information, such as fetching details of different movies one after the other, we can implement a loop. This loop will query the API for multiple movie titles and display the relevant information.
+
+```{r}
+#| label: Example dplyr commands
+#| include: true
+
+# List of movie titles to search
+movie_titles <- c("Inception", "The Matrix", "Interstellar", "The Godfather", "Pulp Fiction")
+
+# Loop through the movie titles to get data
+for (title in movie_titles) {
+  # Encode the movie title to ensure it's URL-safe
+  encoded_title <- URLencode(title, reserved = TRUE)
+  
+  # Construct the endpoint with the encoded title
+  omdb_endpoint <- paste0("http://www.omdbapi.com/?t=", encoded_title, "&apikey=", omdb_api_key)
+  
+  # Get the information and format it
+  omdb_data <- 
+    GET(omdb_endpoint) %>% 
+    content(as = "text", encoding = "UTF-8") %>% 
+    fromJSON()
+  
+  # Generate status messages for each movie
+  print(paste("Title:", omdb_data$Title))
+  print(paste("Year:", omdb_data$Year))
+  print(paste("Director:", omdb_data$Director))
+  print("------")
+  
+  # Add a sleep function to avoid any rate limits
+  Sys.sleep(5)
+}
+```
+
+This loop runs through a list of movie titles and retrieves their details from the OMDb API every 5 seconds, displaying the title, year, and director for each movie.
+
+## Conclusion
+
+You can adjust the list of movies and the sleep time to fit your needs. This demonstration showcases the capability of the OMDb API for fetching movie data in real time and analyzing multiple titles sequentially.
+
+This tutorial should guide you through setting up and using the OMDb API in R. Once you've followed these steps, you’ll be ready to query the OMDb API and integrate movie data into your projects!

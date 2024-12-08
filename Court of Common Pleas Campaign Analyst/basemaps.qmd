@@ -1,0 +1,187 @@
+---
+title: "DSCI 210: Base/Swing Maps"
+author: "Levi Sayles"
+output: html
+---
+
+Today's goal is pretty similar to the last one. The only difference is that we now want to identify the precincts that our campaign will consider Base, Swing, and Residuals. The idea here being that
+
+-   Base: a precinct where our candidate is expected to receive strong support
+-   Swing: a precinct where voters are fairly evenly divided. In other words, our candidate can receive significant support here with the proper messaging
+-   Residual: a precinct where voters are not expected to support our candidate strongly
+
+In completing this task, there are essentially two tasks:
+
+1.  You and your campaign teams will have to determine where the \`\`cutoffs'' will be that produce a meaningful distinction of base/swing/residual for your candidate.
+2.  The R programming necessary to color in a map based on those cutoffs.
+
+The same packages will do the trick as last time.
+
+```{r setup, message=FALSE,warning=FALSE}
+knitr::opts_chunk$set(
+	echo = TRUE,
+	message = FALSE,
+	warning = FALSE
+)
+library(tidyverse)
+library(sf)
+library(readxl)
+library(RColorBrewer)
+library(tidycensus)
+```
+
+# Map from last time
+
+Most of the process of this example the same as the last election maps that we made.
+
+```{r}
+map2020 <- st_zm(st_read("/Users/LeviS/OneDrive/Documents/GitHub/DSCI210-f24/data/maps/precincts_2024.shp"))
+
+results2020 <- read_excel("/Users/LeviS/OneDrive/Documents/GitHub/DSCI210-f24/data/election results/G22_Official_Canvass.xlsx", 
+                       sheet = "Candidates",skip=1)
+
+
+mapANDresults2020 <-
+  left_join(map2020, results2020, by = c("PRECINCT" = "PRECINCT"))
+
+dems <- results2020$`Jody Marie Luebbers` + results2020$`Thomas O. Beridon` + results2020$`Tom        Heekin` + results2020$`R. Bernard Mundy` + results2020$`Rickell Howard Smith` + results2020$`Anne B. Flottman` + results2020$`Manisha    Bansal     Kotian`
+reps <- results2020$`Christopher McDowell` + results2020$`Pat       Dinkelacker` + results2020$`Charles J. Kubicki` + results2020$`Megan E. Shanahan` + results2020$`Stacey Simons DeGraffenreid` + results2020$`Jon H.         Sieve` + results2020$`Elizabeth Anne Sunderman`
+
+
+dem.prop = dems/(dems+reps)
+dem.prop <- dem.prop[-(563:660)]
+
+mapANDresults2020 %>% 
+  mutate(dem.prop)%>%
+  ggplot(aes(fill=dem.prop)) +
+  geom_sf()
+
+voter_type <- data.frame(dem.prop)
+voter_type$party <- ifelse(voter_type$dem.prop < 0.40, "Residual",
+                        ifelse(voter_type$dem.prop >= 0.40 & voter_type$dem.prop < 0.60, "Swing",
+                               "Base"))
+
+
+```
+
+```{r}
+grepl('NORW',mapANDresults2020$PRC_NAME)
+norwood = st_union(mapANDresults2020[grepl('NORW',mapANDresults2020$PRC_NAME),]) 
+
+grepl('CINCINNATI',mapANDresults2020$PRC_NAME)
+cincinnati = st_union(mapANDresults2020[grepl('CINCINNATI',mapANDresults2020$PRC_NAME),])
+
+grepl('WHITE',mapANDresults2020$PRC_NAME)
+white = st_union(mapANDresults2020[grepl('WHITE',mapANDresults2020$PRC_NAME),])
+
+grepl('CROSBY',mapANDresults2020$PRC_NAME)
+cros = st_union(mapANDresults2020[grepl('CROSBY',mapANDresults2020$PRC_NAME),])
+
+grepl('HARR',mapANDresults2020$PRC_NAME)
+harry = st_union(mapANDresults2020[grepl('HARR',mapANDresults2020$PRC_NAME),])
+
+```
+
+
+```{r}
+mapANDresults2020 %>% 
+  mutate(dem.prop) %>%
+  ggplot(aes(fill = dem.prop)) +
+  geom_sf() +
+  labs(
+    title = "2022 Common Pleas Court Judicial Election", 
+    subtitle = "Democrats vs Republicans",
+    fill = "Vote for \n Democrat (%)", 
+    caption = ""
+  ) +
+  scale_fill_gradientn(
+    colours = brewer.pal(n = 10, name = "RdBu"),
+    na.value = "transparent",
+    breaks = c(0, 0.25, 0.5, 0.75, 1),
+    labels = c("0%", "25%", "50%", "75%", "100%"),
+    limits = c(0, 1)
+  ) +
+  geom_sf(data = cincinnati, color = 'navy', fill = NA, lwd = 1.5) +
+  #geom_sf(data = norwood, color = 'orange', fill = NA, lwd = 1.5) +
+  geom_sf(data = white, color = 'darkred', fill = NA, lwd = 1.5) +
+  geom_sf(data = cros, color = 'darkred', fill = NA, lwd = 1.5) +
+  geom_sf(data = harry, color = 'darkred', fill = NA, lwd = 1.5) +
+  # Add labels for each geom_sf layer
+  geom_sf_text(
+    data = st_centroid(cincinnati), 
+    label = "Cincinnati", 
+    color = "black", 
+    size = 5, 
+    inherit.aes = FALSE
+  ) +
+  geom_sf_text(
+    data = st_centroid(white), 
+    label = "Whitewater", 
+    color = "darkred", 
+    size = 3, 
+    inherit.aes = FALSE
+  )+
+    geom_sf_text(
+    data = st_centroid(cros), 
+    label = "Crosby", 
+    color = "darkred", 
+    size = 3, 
+    inherit.aes = FALSE
+  )+
+  theme(
+    axis.text.x = element_text(size = 14),      # Increases x-axis tick labels
+    axis.text.y = element_text(size = 14),      # Increases y-axis tick labels
+    axis.title.x = element_text(size = 16),     # Increases x-axis title
+    axis.title.y = element_text(size = 16),     # Increases y-axis title
+    plot.title = element_text(size = 20, face = "bold"),      # Optional: Increase title size
+    plot.subtitle = element_text(size = 16),                  # Optional: Increase subtitle size
+    legend.title = element_text(size = 14),                    # Optional: Increase legend title
+    legend.text = element_text(size = 12)                      # Optional: Increase legend text
+  )
+
+
+
+
+```
+
+
+
+```{r}
+
+mapANDresults2020 %>%
+  mutate(voter_type = voter_type$party) %>%
+  ggplot(aes(fill = voter_type)) +
+  geom_sf() +
+  labs(title = "2022 Common Pleas Court Judicial Election", 
+       subtitle = "Democrats vs Republicans",
+       fill = "Voter Type", 
+       caption = "") +
+  scale_fill_manual(values = c("Base" = "blue", "Swing" = "yellow", "Residual" = "red"))+
+   theme(
+    axis.text.x = element_text(size = 14),      # Increases x-axis tick labels
+    axis.text.y = element_text(size = 14),      # Increases y-axis tick labels
+    axis.title.x = element_text(size = 16),     # Increases x-axis title
+    axis.title.y = element_text(size = 16),     # Increases y-axis title
+    plot.title = element_text(size = 20, face = "bold"),      # Optional: Increase title size
+    plot.subtitle = element_text(size = 16),                  # Optional: Increase subtitle size
+    legend.title = element_text(size = 14),                    # Optional: Increase legend title
+    legend.text = element_text(size = 12)                      # Optional: Increase legend text
+  )+
+   geom_sf(data = norwood,col='orange',fill=NA,lwd=1.5)+
+  geom_sf_label(data=norwood,aes(label = "Norwood"),cex=2.5,position = position_nudge(x=0,y=0))
+
+```
+
+# Base/Swing Maps
+
+In head-to-head elections, the typical definitions of base/swing/residual are give by:
+
+-   Base: Greater than 60% support (typically colored red/blue depending on party)
+-   Swing: Between 40% and 60% support (typically colored yellow)
+-   Residual: Less than 40% support (typically colored red/blue depending on party)
+
+However, groups in the past have had more interesting ideas for this that have been meaningful to their campaign plan (e.g. "Strong Base", "Base", etc.)
+
+Assignment: \* Fill in the code to make a base/swing map relative to your candidate
+
+

@@ -1,0 +1,212 @@
+---
+title: "Comparing Election Resutls - Different Maps"
+author: Levi Sayles, Xavier University
+format:
+  html:
+    toc: true          # Enable table of contents
+    toc-depth: 2 
+editor: visual
+#editor_options: 
+ # chunk_output_type: inline
+  
+code-fold: true
+echo: true
+eval: true
+warning: false
+error: false  
+---
+
+# Setup
+
+```{r load-libraries, echo=FALSE, results='hide', message=FALSE, warning=FALSE}
+library(dplyr)
+library(tidyr)
+library(xml2)
+library(tidyverse)
+library(purrr)
+library(sf)
+library(RColorBrewer)
+library(tidycensus)
+library(readxl)
+census_api_key("fa67b1dbacf4fbbb1b14c875f34437c6cbdaa694")
+```
+
+Load in current election precinct map, old map, and election results
+
+```{r}
+# Save dataframe to RDS file
+map <- readRDS("map2024.rds")
+old.map <- st_zm(st_read("../data/maps/precincts_2018.shp"))
+
+# Load new election results, change correct columns to numeric, 
+pres.results.2024 <- read_excel("detail2024.xlsx", sheet = "32",skip=2) %>% 
+  mutate(across(c(2:8,18), as.numeric)) %>% 
+  select(c(1:8,18)) 
+
+# give useful column names,
+colnames(pres.results.2024)<-
+  c("Precinct.2024","Registered Voters 2024",
+    "Early.Winkler.2024","Election.Winkler.2024","Total.Winkler.2024",
+    "Early.Tallent.2024","Election.Tallent.2024","Total.Tallent.2024","Total.2024")
+# join election results with map
+mapANDresults2024 <-
+  left_join(map, pres.results.2024, by = c("PRC_ID_NAME_short" = "Precinct.2024"))
+
+# Load new election results, change correct columns to numeric, 
+pres.results.2018 <- read_excel("C:/Users/LeviS/OneDrive/Documents/2024 - 2025 XU/DSCI - 210 - Fall/Githob/11 - Inconsistent Geometries/detail2018.xlsx", sheet = "29",skip=2) %>% 
+    mutate(across(c(2:5,9:11,15), as.numeric)) %>% 
+  select(c(1:5,10:11,15))
+
+# give useful column names,
+colnames(pres.results.2018)<-
+  c("Precinct.2018","Registered Voters 2018",
+    "Early.Allen.2018","Election.Allen.2018","Total.Allen.2018",
+    "Early.Parikh.2018","Election.Parikh.2018","Total.Parikh.2018","Total.2018")
+
+# join election results with map
+mapANDresults2018 <-
+  left_join(old.map, pres.results.2018, by = c("PRECINCT" = "Precinct.2018"))
+```
+
+Get census population data for interpolating between
+
+```{r get-census, echo=FALSE, results='hide', message=FALSE, warning=FALSE}
+block.total <- get_decennial(geography = "block", 
+                 state = "Ohio",
+                 county = "Hamilton",
+                 variables = "P1_001N", 
+                 year = 2020,
+                 sumfile = "dhc",
+                 geometry = TRUE) %>% 
+  select(total.pop = value) %>% 
+  st_transform(crs = st_crs(map))
+
+## notice how the census blocks are much smaller than voting precincts
+block.total %>% ggplot(aes())+ geom_sf()
+```
+
+## Interpolating results to different maps
+
+```{r}
+# interpolate the 2020 results to the 2024 map
+interpolated.results <- interpolate_pw(
+  from = st_make_valid(mapANDresults2018),
+  to = st_make_valid(map),
+  to_id = "PRECINCT",
+  extensive = TRUE,
+  weights =st_make_valid(block.total),
+  weight_column = "total.pop",
+  crs = st_crs(map)
+) 
+
+# join the 2024 data, so that you have one sf object with a map
+# and election results from 2020 and 2024
+combined.sf <-
+  left_join(interpolated.results, st_drop_geometry(mapANDresults2024), by = c("PRECINCT" = "PRECINCT"))
+
+
+
+
+```
+
+```{r}
+
+
+grepl('CIN',mapANDresults2018$PRECINCT)
+cincinnati = st_union(mapANDresults2018[grepl('CIN',mapANDresults2018$PRECINCT),])
+
+
+
+
+
+
+```
+
+# Using the interpolated data to make comparision
+
+## Trump, 2024 vs Trump, 2020
+
+```{r}
+
+combined.sf <- combined.sf %>%
+  mutate(trump.change = Total.Tallent.2024 / Total.2024 - Total.Parikh.2018 / Total.2018)
+m = min(combined.sf$trump.change, na.rm = TRUE)
+M = max(combined.sf$trump.change, na.rm = TRUE)
+
+
+combined.sf  %>% 
+  mutate(trump.change =Total.Tallent.2024/Total.2024 - Total.Parikh.2018/Total.2018) %>%
+  ggplot(aes(fill=trump.change)) +
+  geom_sf()+
+  labs(title = "Democrat 2024 (%) - Democrat 2018 (%)",
+       subtitle = "Average Change: +2.9%",
+       fill = "", 
+       caption = "")+
+  scale_fill_gradientn(colours=rev(brewer.pal(n=10,name="RdBu")),
+                       values = scales::rescale(c(m,0,M)),
+                       na.value = "transparent",
+                       breaks=c(.15,.10,0.05,0,-.05,-.10),
+                       labels=c("-10%","-5%","no change","+5%","+10%","+15%")
+                       )+
+  theme_bw()+
+  geom_sf(data = cincinnati, color = 'navy', fill = NA, lwd = 1.5) +
+  geom_sf_text(
+    data = st_centroid(cincinnati), 
+    label = "Cincinnati", 
+    color = "black", 
+    size = 5, 
+    inherit.aes = FALSE
+  ) +
+  theme(
+    axis.text.x = element_text(size = 14),      # Increases x-axis tick labels
+    axis.text.y = element_text(size = 14),      # Increases y-axis tick labels
+    axis.title.x = element_text(size = 16),     # Increases x-axis title
+    axis.title.y = element_text(size = 16),     # Increases y-axis title
+    plot.title = element_text(size = 20, face = "bold"),      # Optional: Increase title size
+    plot.subtitle = element_text(size = 16),                  # Optional: Increase subtitle size
+    legend.title = element_text(size = 14),                    # Optional: Increase legend title
+    legend.text = element_text(size = 12)                      # Optional: Increase legend text
+  )
+
+
+
+```
+
+```{r}
+combined.sf <- combined.sf %>%
+  mutate(trump.change = Total.Parikh.2018 / (Total.Parikh.2018 + Total.Allen.2018) )
+m = min(combined.sf$trump.change, na.rm = TRUE)
+M = max(combined.sf$trump.change, na.rm = TRUE)
+
+
+combined.sf  %>% 
+  mutate(trump.change = Total.Parikh.2018 / (Total.Parikh.2018 + Total.Allen.2018)) %>%
+  ggplot(aes(fill=trump.change)) +
+  geom_sf()+
+  labs(title = "2018 Common Pleas Court Judicial Election",
+       subtitle = "",
+       fill = "", 
+       caption = "")+
+  scale_fill_gradientn(colours=brewer.pal(n=10,name="RdBu"),na.value = "transparent",                        breaks=c(0,.25,0.5,.75,1),labels=c("0%","25%","50%","75%","100%"),
+                           limits=c(0,1)
+                       )+
+  theme_bw()+
+  geom_sf(data = cincinnati, color = 'navy', fill = NA, lwd = 1.5) +
+  geom_sf_text(
+    data = st_centroid(cincinnati), 
+    label = "Cincinnati", 
+    color = "black", 
+    size = 5, 
+    inherit.aes = FALSE
+  ) +
+  theme(
+    axis.text.x = element_text(size = 14),      # Increases x-axis tick labels
+    axis.text.y = element_text(size = 14),      # Increases y-axis tick labels
+    axis.title.x = element_text(size = 16),     # Increases x-axis title
+    axis.title.y = element_text(size = 16),     # Increases y-axis title
+    plot.title = element_text(size = 20, face = "bold"),      # Optional: Increase title size
+    plot.subtitle = element_text(size = 16),                  # Optional: Increase subtitle size
+    legend.title = element_text(size = 14),                    # Optional: Increase legend title
+    legend.text = element_text(size = 12)                      # Optional: Increase legend text
+  )
+```
