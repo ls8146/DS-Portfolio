@@ -1,0 +1,211 @@
+---
+# This is a YAML
+# YAML is a human-friendly data serialization language
+# We use it to define the criteria of the Quarto Document.
+title: "Stock Price Analysis Using Yahoo Finance"    # Name of your HTML output
+subtitle: "Data from Webscraping"
+author: "Levi Sayles"                   # Author name
+toc: true                 # Generates an automatic table of contents.
+format:                   # Options related to formatting.
+  html:                   # Options related to HTML output.
+    code-tools: False      # Allow the code tools option showing in the output.
+    embed-resources: TRUE # Embeds all components into a single HTML file. 
+execute:                  # Options related to the execution of code chunks.
+  warning: FALSE          # FALSE: Code chunk sarnings are hidden by default.
+  message: FALSE          # FALSE: Code chunk messages are hidden by default.
+---
+
+# Explanation
+
+This report presents an analysis of the stock price trends for major technology companies over the past year. The companies considered are Apple (AAPL), Microsoft (MSFT), Amazon (AMZN), and Google (GOOGL). We aim to understand how these companies have performed, identifying key trends and comparing their returns. The data for this analysis is sourced from Yahoo Finance.
+
+# Libraries
+
+```{r}
+#| include: FALSE 
+library(tidyverse)
+library(quantmod)# Useful tools for retrieving financial data
+library(knitr)
+library(ggplot2)
+```
+- **tidyverse**: A collection of R packages designed for data science. It includes packages like `ggplot2` for data visualization, `dplyr` for data manipulation, and `readr` for reading data.
+- **quantmod**: A package for financial modeling that allows for easy retrieval of stock data from various sources, including Yahoo Finance.
+- **knitr**: A package that is used for dynamic report generation in R, making it easier to embed R code and output in documents.
+- **ggplot2**: A part of the tidyverse, `ggplot2` is a popular package for creating visualizations in R, using a grammar of graphics approach.
+
+# 1. Introduction
+
+In this report, we investigate the question: *"How do the stock prices of major technology companies vary over time, and what insights can we derive regarding their price volatility?"* This analysis aims to identify trends in the stock prices of major tech companies, providing insights into their performance in recent market conditions.
+
+# 2. Data Collection Strategy
+
+The data was collected using the `quantmod` package to retrieve historical stock price data from Yahoo Finance. The selected companies for this analysis are:
+
+- **Apple (AAPL)**
+- **Microsoft (MSFT)**
+- **Google (GOOGL)**
+- **Amazon (AMZN)**
+
+The data includes key variables such as:
+
+- **Date**
+- **Open Price**
+- **High Price**
+- **Low Price**
+- **Close Price**
+- **Volume**
+- **Adjusted Close Price**
+
+The function iterates through the tickers of the selected companies to ensure a comprehensive dataset.
+
+```{r retrieve-data, include=FALSE}
+download_stock_data <- function(companies) {
+  # Set user agent to identify the request source
+  user_agent <- 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+  # Create an empty list to store stock data
+  stocks_data <- list()
+  
+  # Loop through each company ticker and download historical stock data
+  for (i in seq_along(companies)) {
+    Sys.sleep(2) # Delay to ensure a reasonable rate of data requests
+    tryCatch({
+      # Get historical stock data for the current company from Yahoo Finance
+      stock_data <- getSymbols(companies[i], src = "yahoo", auto.assign = FALSE, curl.options = list(useragent = user_agent))
+      
+      # Convert to data frame and add a new column to identify the company
+      stock_data_df <- data.frame(Date = index(stock_data), coredata(stock_data)) %>%
+        mutate(Company = companies[i])
+      
+      # Ensure consistent column names for merging
+      colnames(stock_data_df) <- c("Date", "Open", "High", "Low", "Close", "Volume", "Adjusted", "Company")
+      
+      # Append the current stock data to the list
+      stocks_data[[i]] <- stock_data_df
+    }, error = function(e) {
+      # Print an error message if an error occurs
+      message("Error retrieving data for ", companies[i], ": ", e)
+    })
+  }
+  
+  # Combine the stock data for all companies into one data frame
+  stocks_data_combined <- bind_rows(stocks_data)
+  return(stocks_data_combined)
+}
+
+# Define the tickers for the companies we want to analyze
+companies <- c("AAPL", "MSFT", "GOOGL", "AMZN")
+
+# Download the stock data using the function
+stocks_data_combined <- download_stock_data(companies)
+
+# Save the combined stock data to a CSV file for further analysis
+write_csv(stocks_data_combined, "stocks_data.csv")
+```
+
+# 3. Data Wrangling
+
+We start by importing the dataset saved locally or from a cloud storage.
+
+```{r import-data}
+#| include: FALSE 
+stocks <- read_csv("https://myxavier-my.sharepoint.com/:x:/g/personal/saylesl_xavier_edu/EY7QqWdTq2ZIkr0uKGewMYkBcCwGK5dIBV6CjgkRhAkSfw?download=1")
+
+# Data Cleaning
+stocks_clean <- stocks %>%
+  filter(!is.na(Close)) %>%
+  mutate(Date = as.Date(Date))
+
+# Group by Company and Summarize
+grouped_stocks <- stocks_clean %>%
+  group_by(Company) %>%
+  summarise(
+    Average_Close = mean(Close, na.rm = TRUE),
+    Max_Close = max(Close, na.rm = TRUE),
+    Min_Close = min(Close, na.rm = TRUE),
+    Count = n()
+  )
+```
+The data wrangling process involves cleaning and transforming the raw data into a format suitable for analysis. This includes filtering out any missing or irrelevant data and creating summary statistics for each company.
+
+1. **Data Cleaning**: The first step is to import the dataset and remove any rows with missing values in the `Close` column. This ensures that our analysis is based on complete data points.
+
+2. **Data Transformation**: We convert the `Date` column to a date format for easy plotting and further analysis.
+
+3. **Grouping and Summarizing**: We then group the data by `Company` and calculate summary statistics, such as the average closing price (`Average_Close`), maximum closing price (`Max_Close`), minimum closing price (`Min_Close`), and the total count of observations (`Count`). These summary statistics help provide an overview of each company's stock performance over the selected time period.
+
+
+# 4. Analysis and Visualizations
+
+#### 4.1 Average Closing Price by Company
+
+```{r plot-average-close}
+#| echo: false
+ggplot(grouped_stocks, aes(x = reorder(Company, -Average_Close), y = Average_Close)) +
+  geom_bar(stat = "identity", fill = "steelblue") +
+  labs(title = "Average Closing Price by Company", x = "Company (Stock Ticker)", y = "Average Closing Price (USD)") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+The average closing price by company provides a high-level comparison of the different companies over the selected period. Microsoft and Apple show higher average closing prices, indicating stronger overall performance relative to other companies. This may suggest that investors perceive these companies as having stronger financial health or potential for growth.
+
+
+#### 4.2 Closing Price Over Time
+
+```{r lineplot-close-price}
+#| echo: false
+ggplot(stocks_clean, aes(x = Date, y = Close, color = Company)) +
+  geom_line() +
+  labs(title = "Closing Price Over Time", x = "Date", y = "Closing Price (USD)") +
+  theme_minimal()
+```
+
+The line plot of closing prices over time reveals the temporal trends in the stock prices for each company. For instance, we can identify any particular upward or downward movements in the stocks and assess how each company responds to market conditions. This graph is useful for observing patterns like seasonality or trends caused by significant events (e.g., product launches or earnings reports).
+
+
+#### 4.3 Distribution of Daily Price Range by Company
+
+```{r boxplot-price-range}
+#| echo: false
+stocks_clean <- stocks_clean %>%
+  mutate(Daily_Range = High - Low)
+
+ggplot(stocks_clean, aes(x = Company, y = Daily_Range)) +
+  geom_boxplot() +
+  labs(title = "Distribution of Daily Price Range by Company", x = "Company (Stock Ticker)", y = "Daily Price Range (USD)") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+The boxplot of the daily price range helps us understand the volatility of each stock. A larger daily price range indicates more fluctuation in the stock price throughout a typical trading day, which suggests a higher level of risk. The visualization shows how Meta and Google have wider interquartile ranges compared to Apple, which indicates relatively higher volatility.
+
+#### 4.4 Trading Volume Distribution
+
+```{r histogram-volume}
+#| echo: false
+stocks_clean %>%
+  ggplot(aes(Volume)) +
+  geom_histogram(fill = "tomato", bins = 30) +
+  scale_x_continuous(labels = scales::comma) +
+  labs(title = "Distribution of Trading Volume", x = "Trading Volume (Number of Shares)", y = "Frequency")
+```
+
+The histogram of trading volumes provides insights into investor interest in these stocks. High trading volume indicates significant market activity, suggesting that many investors are buying or selling the stock. This insight can be useful for liquidity assessment, as highly traded stocks are typically easier to buy or sell without affecting the price.
+
+
+#### 4.5 Summary Table
+
+```{r summary-table}
+#| echo: false
+kable(grouped_stocks, caption = "Summary of Stock Prices by Company")
+```
+
+The summary table provides an overview of the average, maximum, and minimum closing prices for each company, along with the number of data points collected. This gives investors a reference point for understanding both the highest highs and lowest lows of each company, helping in making informed decisions regarding investment
+
+
+### 5. Conclusion
+
+The analysis reveals distinct patterns in the stock prices of major technology companies. Apple and Microsoft tend to have higher average closing prices compared to Google, Amazon, and Meta, reflecting their market confidence and overall performance. This suggests that investors have strong faith in the future potential of these companies, which could be linked to consistent earnings growth, robust product pipelines, and market leadership.
+
+The analysis of the daily price range also highlights that Google and Meta exhibit higher volatility, which can be appealing to risk-tolerant investors looking for opportunities to benefit from short-term price movements. Volatility often indicates a higher level of risk, but also the potential for greater returns if managed properly.
+
+Trading volumes vary significantly between companies, providing insight into the level of investor interest and liquidity. High trading volume often implies a strong market presence and can suggest that the stock is easy to buy or sell without significantly affecting its price.
+
+These insights are valuable for investors aiming to understand recent trends among these tech giants. Depending on an investor's goals—whether they prefer steady growth and lower risk, like Apple and Microsoft, or higher risk with potentially greater returns, like Google and Meta—this analysis can help in making informed investment decisions. Overall, understanding these distinct patterns offers a comprehensive view of the recent stock performance of major technology companies.
