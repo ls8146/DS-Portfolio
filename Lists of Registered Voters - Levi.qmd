@@ -1,0 +1,383 @@
+---
+title: "DSCI 210: Lists of Registered Voters - Part 2"
+author: "Levi Sayles"                   # Author name
+toc: true                 # Generates an automatic table of contents.
+format:                   # Options related to formatting.
+  html:                   # Options related to HTML output.
+    code-tools: TRUE      # Allow the code tools option showing in the output.
+    embed-resources: TRUE  # Embeds all components into a single HTML file. 
+    code-fold: true
+execute:                  # Options related to the execution of code chunks.
+  warning: FALSE          # FALSE: Code chunk sarnings are hidden by default.
+  message: FALSE          # FALSE: Code chunk messages are hidden by default.
+  echo:    TRUE           # TRUE:  Show all code in the output.
+editor: 
+  markdown: 
+    wrap: sentence
+---
+
+Loading necessary packages and such.
+
+```{r setup, message=FALSE,warning=FALSE}
+#| label: Setup
+#| include: FALSE
+
+library(tidyverse)
+library(sf)
+library(readxl)
+library(RColorBrewer)
+library(tidycensus)
+```
+
+## Let's get an in-depth view of the List of Registered Voters in Hamilton County, Ohio.
+
+```{r}
+#| label: loading the data
+#| include: FALSE
+voters.boe <-read_csv("https://myxavier-my.sharepoint.com/:x:/g/personal/saylesl_xavier_edu/ETksH5NOdMJKn_4KcwuUURYB2eZL-g1VRpGmst2NwigvWA?download=1")
+voters.sos <-read_csv("https://myxavier-my.sharepoint.com/:x:/g/personal/saylesl_xavier_edu/EbVZizASLktJpGJZv6WDZboBQX7LGYzlgi4Sl_9nUuvxmQ?download=1")
+```
+
+We begin with some preprocessing.
+The Secretary of State data has a much longer election history so we will use that.
+Unfortunately, the column names for elections include a minus sign "-", which is a special character in R and could cause problems.
+The first thing to do is to replace all of those minus signs with a ".".
+Having lots of elections is great, but we also don't need to look back on EVERY SINGLE primary and special election over the last 24 years.
+So let's find the elections that we won't include and remove those columns to clean things up.
+This will speed up calculations on the elections that we do care about.
+
+```{r}
+#| label: initial data wrangling
+#| include: FALSE
+
+
+voters.sos <- voters.sos %>%  
+   rename_with(~ gsub("-", ".", .))  
+
+## print out a list of the election columns... which we can identify by what they start with
+voters.sos %>%
+  select(starts_with("PRIMARY") | starts_with("GENERAL") | starts_with("SPECIAL")) %>%
+  colnames()
+
+## I only want regular spring primaries (i.e. in March or in May), regular general elections (i.e. in Nov), and the special election from Aug, 2023 because it related to abortion (a big issue in this year's election).
+print("-------- ELECTIONS THAT WE WILL CONSIDER IN OUR ANALYSIS ---------------------------")
+voters.sos %>% 
+  select(starts_with("PRIMARY.03/")|starts_with("PRIMARY.05/")|starts_with("GENERAL.11/") |starts_with("SPECIAL.08/08/2023")) %>% 
+  colnames()
+```
+
+Our goal is to set up this analysis so that as much of it as possible can be rerun in the future.
+In this block, I want to include all of the code that will need to be adjusted by hand.
+
+```{r}
+#| label: initial data wrangling 2
+#| include: FALSE
+election.date = "2024-11-05"
+elections.cols <- 47:127
+pres.elections = c("GENERAL.11/07/2000", "GENERAL.11/02/2004", "GENERAL.11/04/2008", "GENERAL.11/06/2012", "GENERAL.11/08/2016", "GENERAL.11/03/2020")
+gov.elections = c("GENERAL.11/05/2002","GENERAL.11/07/2006", "GENERAL.11/02/2010","GENERAL.11/04/2014","GENERAL.11/06/2018","GENERAL.11/08/2022")
+off.elections = c("GENERAL.11/06/2001","GENERAL.11/04/2003","GENERAL.11/08/2005","GENERAL.11/06/2007","GENERAL.11/03/2009","GENERAL.11/08/2011","GENERAL.11/05/2013","GENERAL.11/03/2015","GENERAL.11/07/2017","GENERAL.11/05/2019","GENERAL.11/02/2021","GENERAL.11/07/2023" )
+prim.elections = c("PRIMARY.05/07/2002","PRIMARY.05/03/2005","PRIMARY.05/02/2006","PRIMARY.05/08/2007","PRIMARY.05/05/2009","PRIMARY.05/04/2010","PRIMARY.05/03/2011","PRIMARY.05/07/2013","PRIMARY.05/06/2014","PRIMARY.05/05/2015","PRIMARY.05/02/2017","PRIMARY.05/08/2018","PRIMARY.05/07/2019","PRIMARY.05/04/2021","PRIMARY.05/03/2022","PRIMARY.05/02/2023")
+
+```
+
+We start off by comparing the two lists of registered voters for consistency.\
+If they differ significantly, we have to investigate, understand why, and use the appropriate data source for our analysis.
+
+```{r}
+#| warning: false
+#| message: false
+#| echo: false
+nrow(voters.boe)
+nrow(voters.sos)
+```
+
+::: panel-tabset
+## Board of Elections
+
+```{r}
+#| warning: false
+#| message: false
+#| echo: false
+
+voters.boe$RegisteredDate <- as.Date(voters.boe$RegisteredDate, format = "%m/%d/%Y")
+voters.sos$REGISTRATION_DATE <- as.Date(voters.sos$REGISTRATION_DATE, format = "%m/%d/%Y")
+
+# Plot for Hamilton County Board of Elections (voters.boe)
+ggplot(voters.boe, aes(x = RegisteredDate)) +
+  geom_histogram(binwidth = 365, color = "black", fill = "blue") +
+  labs(title = "Registration Date - Hamilton County Board of Elections", 
+       x = "Registration Date", y = "Frequency") +
+  scale_x_date(limits = as.Date(c("1935-01-01", election.date))) +
+  scale_y_continuous(labels = scales::label_number(accuracy = 1))  # Ensure integer y-axis
+```
+
+## Secretary of State
+
+```{r}
+#| warning: false
+#| message: false
+#| echo: false
+# Plot for Ohio Secretary of State (voters.sos)
+ggplot(voters.sos, aes(x = REGISTRATION_DATE)) +
+  geom_histogram(binwidth = 365, color = "black", fill = "blue") +
+  labs(title = "Registration Date - Ohio Secretary of State", 
+       x = "Registration Date", y = "Frequency") +
+  scale_x_date(limits = as.Date(c("1935-01-01", election.date))) +
+  scale_y_continuous(labels = scales::label_number(accuracy = 1))
+```
+:::
+
+With a data set of over 600,000 rows, computations can take some time.\
+To speed things up while we work through examples and ideas, let's only run things for a randomly selected subset of 1,000 voters.
+When we want to run things for real, we'll just comment out this line.
+
+```{r}
+#| label: change sample size
+#| echo: FALSE
+n=1000
+voters.sos = voters.sos[sample(nrow(voters.sos), n), ]
+
+
+```
+
+## Registration after sample size change
+
+```{r}
+#| label: Registration after sample size change 2
+#| echo: FALSE
+ggplot(voters.sos, aes(x = REGISTRATION_DATE)) +
+  geom_histogram(binwidth = 365, color = "black", fill = "blue") +  # binwidth = 365 for yearly bins
+  labs(title = "Registration Date - Ohio Secretary of State", 
+       x = "Registration Date", y = "Frequency") +
+  scale_x_date(limits = as.Date(c("1935-01-01", election.date))) +
+  scale_y_continuous(labels = scales::label_number(accuracy = 1))
+```
+
+## Computing age on Election Day
+
+We know that an important aspect of campaign strategy is to target voters and messaging based on age.
+The list of registered voters does not include ages though, but does include birth year which we can use to approximate the ages of voters on Election Day.
+
+```{r}
+#| label: Calculating Age
+#| warning: false
+#| message: false
+#| echo: false
+
+voters.sos$DATE_OF_BIRTH <- as.Date(voters.sos$DATE_OF_BIRTH, format = "%m/%d/%Y")
+
+election.date <- as.Date(election.date)
+
+# Calculate age based on the election date
+voters.sos <- voters.sos %>%
+  mutate(AGE = floor(as.numeric(difftime(as.Date(election.date), DATE_OF_BIRTH, units = "days")) / 365.25))
+
+```
+
+# Previous Voting Behavior
+
+In the List of Registered Voters, we have each individual's voting history.\
+This means that we are able to make our own definitions for anything that we want.
+
+We would like to be able to measure how likely it is that a voter will turnout for our election.
+We can't just see what proportion of elections they have voted in because someone may be younger and not even been able to vote in many of the elections in our data.
+Unfortunately, there seems to be "weirdness" in the REGISTRATION_DATE data as it has huge numbers of people that registered in 1989 and huge numbers in 2024.
+Our approach will be to look at the first election someone has voted in, and then see their voting record after that.
+
+Specifically: - Look in the columns that give participation in elections (i.e. elections.cols) - For each voter, find the election in which they first voted.
+-Mark all subsequent elections that they did not vote as 'o' to signify that the could have voted but did not.
+- Mark all the previous election before their initial voting experience as 'b', so signify the eleciton happened "before" they started voting in Hamilton County.
+
+```{r}
+#| label: Registration after sample size change
+#| echo: FALSE
+
+replace_na_with_o <- function(row) {
+  first_non_na_index <- which(!is.na(row))[1]  # Find the first non-NA value index
+  if(is.na(first_non_na_index)){
+    #If the person has never voted, replace the whole row with "b"
+    row[1:length(row)] <- 'b'
+  } else {
+    if (first_non_na_index >1) {
+      # Replace the NA values before the first vote with "b"
+      row[1:(first_non_na_index-1)] <- "b"
+    }
+    if (first_non_na_index < length(row)) {
+    # Replace only the NA values in subsequent positions with "o"
+    row[(first_non_na_index + 1):length(row)][is.na(row[(first_non_na_index + 1):length(row)])] <- "o"
+    }
+  }
+  return(row)
+}
+
+for (i in 1:nrow(voters.sos)){
+  voters.sos[i,elections.cols] = replace_na_with_o(voters.sos[i,elections.cols])
+}
+
+```
+
+## First time voters
+
+We can now easily make a list of all the registered voters that have never voted yet.
+We can also find the people that are voting in their first Presidential election.
+
+```{r}
+#| warning: false
+#| message: false
+#| echo: false
+first.time.voters <- voters.sos %>% 
+  filter(if_all(elections.cols, ~ . == "b"))
+hist(first.time.voters$AGE,breaks=30,freq=T,main ="Age distribution of those who have \n never voted in Hamilton County",xlab = "Age")
+
+            
+first.pres.voters <- voters.sos %>% 
+  filter(if_all(pres.elections, ~ . == "b"))
+hist(first.pres.voters$AGE,breaks=30,freq=T,main ="Age distribution of those who have never \n voted in Presidential election in Hamilton County",xlab = "Age")
+
+```
+
+## Summary of voter participation
+
+We want to be estimate the likelihood that a person will vote, and estimate the likelihood of them voting in a particular way.\
+While this won't be perfect, the best way we can do this is based on their previous voting participation.
+To facilitate this, we begin by creating summary columns of voter participation.
+
+```{r}
+voters.sos <- voters.sos %>%
+  rowwise() %>%
+  mutate(
+    X.count.pres  = sum(across(pres.elections, ~ . == "X")),
+    Xo.count.pres = sum(across(pres.elections, ~ . == "X"))+sum(across(pres.elections, ~ . == "o")),
+    X.count.gov   = sum(across( gov.elections, ~ . == "X")),
+    Xo.count.gov  = sum(across( gov.elections, ~ . == "X"))+sum(across( gov.elections, ~ . == "o")),
+    D.count.prim  = sum(across(prim.elections, ~ . == "D")),
+    R.count.prim  = sum(across(prim.elections, ~ . == "R")),
+    X.count.prim  = sum(across(prim.elections, ~ . == "X")),
+    DRXo.count.prim  = sum(across(prim.elections, ~ . == "D"))+sum(across(prim.elections, ~ . == "R"))+sum(across(prim.elections, ~ . == "X"))+sum(across(prim.elections, ~ . == "o")),
+  ) %>%
+  ungroup()
+
+
+```
+
+## Making voter lists for a campaign
+
+```{r}
+#| warning: false
+#| message: false
+#| echo: false
+temp <- voters.sos %>% 
+  rowwise() %>% 
+  mutate(p = X.count.pres/Xo.count.pres)%>%
+  ungroup()
+
+hist(temp$p,breaks=20)
+
+# Find the most likely voters and save them to file
+ voters.sos %>% 
+  filter(X.count.pres/Xo.count.pres > .95) %>% 
+  write.csv(file = "likely_voters.csv", row.names = FALSE)
+
+
+```
+
+## Party Affiliation
+
+In Ohio, voters do not officially declare their political affiliation.\
+Instead, party affiliation is determined by voting in primary election.
+The offical law from the Ohio Revised Code 3513.05¶7 is that \`\`An elector is considered to be a member of a political party if they voted in that party’s primary election within the preceding two calendar years, or if they did not vote in any other party’s primary election within the preceding two calendar years.'' This determinatin is listed in the "PartyCode" column in the Board of Elections data and "PARTY_AFFILIATION" column in the Secretary of State data.
+
+```{r}
+
+# Find voters that are likely Democrats and likely to vote
+democrats <- voters.sos %>% 
+  filter(D.count.prim/(D.count.prim+R.count.prim) > .95 & D.count.prim> 2)
+
+# Find voters that are likely Republicans and likely to vote
+republicans <- voters.sos %>% 
+  filter(R.count.prim/(D.count.prim+R.count.prim) > .95 & R.count.prim> 2)
+
+# Find voters that haven't voted both in Democratic and Republican primaries or did an "issues only" primary
+swing <- voters.sos %>% 
+  filter((D.count.prim > 0 & R.count.prim> 0) | X.count.prim >0)
+voters.sos$DATE_OF_BIRTH <- as.Date(voters.sos$DATE_OF_BIRTH, format = "%m/%d/%Y")
+
+# Calculate the age based on the election date
+voters.sos <- voters.sos %>%
+  mutate(AGE = floor(as.numeric(difftime(as.Date(election.date), DATE_OF_BIRTH, units = "days")) / 365.25))
+
+
+```
+
+# Assignment
+
+### Relevant list: Strong Democratic Voters
+
+```{r}
+democratic_voters <- voters.sos %>%
+  filter(D.count.prim > 0 & R.count.prim == 0 & X.count.pres / Xo.count.pres > 0.80) %>%
+  filter(!is.na(AGE))
+
+write.csv(democratic_voters, file = "democratic_voters.csv", row.names = FALSE)
+
+```
+
+```{r}
+#| warning: false
+#| message: false
+#| echo: false
+hist(democratic_voters$AGE, breaks = 30, freq = TRUE, 
+     main = "Age Distribution of Strong Democratic Voters", 
+     xlab = "Age", col = "blue")
+```
+
+The histogram shows the age distribution of strong Democratic voters, ranging from 30 to 90 years old.
+There are peaks in voter numbers around ages 45, 55, 65, and 75, with fewer voters under 40 and over 85.
+Most strong Democratic voters are between 40 and 80 years old.
+
+```{r}
+#| warning: false
+#| message: false
+#| echo: false
+  ggplot(democratic_voters, aes(x = RESIDENTIAL_CITY)) +
+  geom_bar(fill = "blue", color = "black") +
+  labs(title = "Strong Democratic Voters by City", x = "City", y = "Count of Voters") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+Most Strong Democrats are in Cincinnati
+
+### Interesting list: Swing Voters
+
+```{r}
+swing_voters <- voters.sos %>%
+  filter((D.count.prim > 0 & R.count.prim > 0) | X.count.prim > 0) %>%
+  filter(!is.na(AGE)) 
+
+write.csv(swing_voters, file = "swing_voters.csv", row.names = FALSE)
+```
+
+```{r}
+#| warning: false
+#| message: false
+#| echo: false
+hist(swing_voters$AGE, breaks = 30, freq = TRUE, 
+     main = "Age Distribution of Swing Voters", 
+     xlab = "Age", col = "lightcoral")
+```
+
+The histogram shows that most swing voters are between 40 and 80 years old, with the largest group around age 60.
+There are fewer voters under 30 and over 80.
+
+```{r}
+#| warning: false
+#| message: false
+#| echo: false
+ggplot(swing_voters, aes(x = RESIDENTIAL_CITY)) +
+  geom_bar(fill = "red", color = "black") +
+  labs(title = "Swing Voters by City", x = "City", y = "Count of Voters") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+Most Swing Voters are in Cincinati
